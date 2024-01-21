@@ -1,4 +1,6 @@
-const ec2Stopper = require('./ec2');
+const InitEC2Manging = require('./ec2');
 
+const ec2Manager = new InitEC2Manging();
 
-ec2Stopper();
+//ec2Manager.stopEC2Instances();
+ec2Manager.terminateEC2Instances();

@@ -1,5 +1,5 @@
 // AWS SDK를 로드합니다.
-const { EC2Client, DescribeInstancesCommand, StopInstancesCommand } = require("@aws-sdk/client-ec2");
+const { EC2Client, DescribeInstancesCommand, StopInstancesCommand, TerminateInstancesCommand, DescribeVolumesCommand } = require("@aws-sdk/client-ec2");
 // logger 로드
 const logMessage = require('./logger');
 
@@ -7,36 +7,106 @@ const logMessage = require('./logger');
 // EC2 서비스 객체 생성
 const client = new EC2Client({ region: "ap-northeast-2" });
 
-async function stopEC2Instances() {
-    const command = new DescribeInstancesCommand({
-        Filters: [
-            {
-                Name: "instance-state-name",
-                Values: ["running"]
-            }
-        ]
-    });
+class ManageEC2 {
 
-    try {
-        // 중지 리스트 저장
-        let stopInstanceList = new Array();
-        const data = await client.send(command);
-        data.Reservations.forEach(reservation => {
-            reservation.Instances.forEach(instance => {
-                const instanceId = instance.InstanceId;
-                const existTag = instance.Tags.find(tag => tag.Key === 'NO_AUTO_STOP');
-                if (!existTag || existTag.Value.toLowerCase() !== 'enable') {
-                    stopInstanceList.push(instanceId);
-                    logMessage('info', `get stop instance id: ${instanceId} - reason(no tag)`, 'ec2.js');
-                }
-            });
-        });
+    constructor() {}
 
-        await client.send(new StopInstancesCommand({ InstanceIds: stopInstanceList }));
-        logMessage('info', `success stop instances: ${stopInstanceList}`, 'ec2.js');
-    } catch (error) {
-        logMessage('error', `error: ${error}`, 'ec2.js');
+    // get instance list
+    async getEC2List(trigger) {
+        const command = new DescribeInstancesCommand({});
+
+        if (trigger === 'stop') {
+            command.input.Filters = [
+                    {
+                        Name: "instance-state-name",
+                        Values: ["running"]
+                    }
+                ];
+        }
+
+        return client.send(command);
     }
+
+    //get EBS Mount info
+    async getVolumesDate(volumeId) {
+
+        try {
+            const describeVolumesCommand = new DescribeVolumesCommand({ VolumeIds: [volumeId] });
+            const volumeData = await client.send(describeVolumesCommand);
+            if (volumeData.Volumes.length > 0) {
+              return new Date(volumeData.Volumes[0].CreateTime);
+            }
+            return null;
+          } catch (error) {
+            console.error(`Error retrieving volume ${volumeId}:`, error);
+            return null;
+          }
+    }
+
+    async stopEC2Instances() {
+    
+        try {
+            // 중지 리스트 저장
+            let stopInstanceList = new Array();
+            const data = await this.getEC2List('stop');
+
+            data.Reservations.forEach(reservation => {
+                reservation.Instances.forEach(instance => {
+                    const instanceId = instance.InstanceId;
+                    const existTag = instance.Tags.find(tag => tag.Key === 'NO_AUTO_STOP');
+                    if (!existTag || existTag.Value.toLowerCase() !== 'enable') {
+                        stopInstanceList.push(instanceId);
+                        logMessage('info', `get stop instance id: ${instanceId} - reason(no tag)`, 'ec2.js');
+                    }
+                });
+            });
+    
+            await client.send(new StopInstancesCommand({ InstanceIds: stopInstanceList }));
+            logMessage('info', `success stop instances: ${stopInstanceList}`, 'ec2.js');
+        } catch (error) {
+            logMessage('error', `error: ${error}`, 'ec2.js');
+        }
+    }
+
+    // 기간이 오래된 인스턴스 종료
+    async terminateEC2Instances() {
+        try {
+            // EC2 인스턴스 목록 가져오기
+            const instanceList = await this.getEC2List('terminate');
+        
+            let instancesToTerminate = new Array();
+            const today = new Date();
+        
+            // 인스턴스 생성 날짜 확인 및 필터링
+            for (const reservation of instanceList.Reservations) {
+                for (const instance of reservation.Instances) {
+                    if (instance.BlockDeviceMappings.length > 0) {
+                        const volumeId = instance.BlockDeviceMappings[0].Ebs.VolumeId;
+                        const volumeCreationDate = await this.getVolumesDate(volumeId);
+            
+                    if (volumeCreationDate) {
+                        const ageInDays = Math.floor((today - volumeCreationDate) / (1000 * 60 * 60 * 24));
+                        if (ageInDays > 100) {
+                            instancesToTerminate.push(instance.InstanceId);
+                        }
+                        }
+                    }
+                }
+            }
+            // 인스턴스 종료
+            if (instancesToTerminate.length > 0) {
+                // const terminateInstancesCommand = new TerminateInstancesCommand({
+                //   InstanceIds: instancesToTerminate
+                // });
+                // await client.send(terminateInstancesCommand);
+                console.log('Terminated Instances:', instancesToTerminate);
+            } else {
+              console.log('No instances older than 100 days to terminate');
+            }
+          } catch (error) {
+            console.error('Error terminating instances:', error);
+          }
+        }
 }
 
-module.exports = stopEC2Instances;
+module.exports = ManageEC2;
