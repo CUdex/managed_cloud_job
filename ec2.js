@@ -56,13 +56,12 @@ class ManageEC2 {
                     const existTag = instance.Tags.find(tag => tag.Key === 'NO_AUTO_STOP');
                     if (!existTag || existTag.Value.toLowerCase() !== 'enable') {
                         stopInstanceList.push(instanceId);
-                        logMessage('info', `get stop instance id: ${instanceId} - reason(no tag)`, 'ec2.js');
                     }
                 });
             });
     
             await client.send(new StopInstancesCommand({ InstanceIds: stopInstanceList }));
-            logMessage('info', `success stop instances: ${stopInstanceList}`, 'ec2.js');
+            logMessage('info', `success stop instances: ${stopInstanceList} - reason(no tag: NO_AUTO_STOP)`, 'ec2.js');
         } catch (error) {
             logMessage('error', `error: ${error}`, 'ec2.js');
         }
@@ -84,11 +83,13 @@ class ManageEC2 {
                         const volumeId = instance.BlockDeviceMappings[0].Ebs.VolumeId;
                         const volumeCreationDate = await this.getVolumesDate(volumeId);
             
-                    if (volumeCreationDate) {
-                        const ageInDays = Math.floor((today - volumeCreationDate) / (1000 * 60 * 60 * 24));
-                        if (ageInDays > 100) {
-                            instancesToTerminate.push(instance.InstanceId);
-                        }
+                        if (volumeCreationDate) {
+                            const ageInDays = Math.floor((today - volumeCreationDate) / (1000 * 60 * 60 * 24));
+                            const existTag = instance.Tags.find(tag => tag.Key === 'NO_AUTO_TERMINATE');
+                            // volume 100일이 넘거나 NO_AUTO_TERMINATE가 없으면 push
+                            if (ageInDays > 100 && (!existTag || existTag.Value.toLowerCase() !== 'enable')) {
+                                instancesToTerminate.push(instance.InstanceId);
+                            }
                         }
                     }
                 }
@@ -99,12 +100,12 @@ class ManageEC2 {
                 //   InstanceIds: instancesToTerminate
                 // });
                 // await client.send(terminateInstancesCommand);
-                console.log('Terminated Instances:', instancesToTerminate);
+                logMessage('info', `success terminate instances: ${instancesToTerminate} - reason(no tag: NO_AUTO_TERMINATE and over days 100)`, 'ec2.js');
             } else {
-              console.log('No instances older than 100 days to terminate');
+                logMessage('info', 'No instances older than 100 days to terminate', 'ec2.js');
             }
           } catch (error) {
-            console.error('Error terminating instances:', error);
+            logMessage('error', `Error terminating instances: ${error}`, 'ec2.js');
           }
         }
 }
