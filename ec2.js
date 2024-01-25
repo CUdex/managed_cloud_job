@@ -59,9 +59,10 @@ class ManageEC2 {
                     }
                 });
             });
-    
-            await client.send(new StopInstancesCommand({ InstanceIds: stopInstanceList }));
-            logMessage('info', `success stop instances: ${stopInstanceList} - reason(no tag: NO_AUTO_STOP)`, 'ec2.js');
+            if (stopInstanceList.length > 0){
+                await client.send(new StopInstancesCommand({ InstanceIds: stopInstanceList }));
+                logMessage('info', `success stop instances: ${stopInstanceList} - reason(no tag: NO_AUTO_STOP)`, 'ec2.js');
+            }
         } catch (error) {
             logMessage('error', `error: ${error}`, 'ec2.js');
         }
