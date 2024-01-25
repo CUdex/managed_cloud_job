@@ -97,10 +97,10 @@ class ManageEC2 {
             }
             // 인스턴스 종료
             if (instancesToTerminate.length > 0) {
-                // const terminateInstancesCommand = new TerminateInstancesCommand({
-                //   InstanceIds: instancesToTerminate
-                // });
-                // await client.send(terminateInstancesCommand);
+                const terminateInstancesCommand = new TerminateInstancesCommand({
+                  InstanceIds: instancesToTerminate
+                });
+                await client.send(terminateInstancesCommand);
                 logMessage('info', `success terminate instances: ${instancesToTerminate} - reason(no tag: NO_AUTO_TERMINATE and over days 100)`, 'ec2.js');
             } else {
                 logMessage('info', 'No instances older than 100 days to terminate', 'ec2.js');
